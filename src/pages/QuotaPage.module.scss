@@ -41,6 +41,24 @@
   }
 }
 
+.sectionFilter {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  flex-wrap: wrap;
+}
+
+.sectionFilterLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.sectionFilterSelect {
+  min-width: 132px;
+}
+
 .titleWrapper {
   display: flex;
   align-items: center;

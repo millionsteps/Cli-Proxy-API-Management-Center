@@ -104,11 +104,24 @@ export interface QuotaStore {
   clearQuotaCache: () => void;
 }
 
+export interface QuotaSectionFilterOption {
+  value: string;
+  labelKey: string;
+}
+
+export interface QuotaSectionFilter<TState> {
+  labelKey: string;
+  defaultValue: string;
+  options: QuotaSectionFilterOption[];
+  resolveValue: (file: AuthFileItem, quota?: TState) => string | null;
+}
+
 export interface QuotaConfig<TState, TData> {
   type: QuotaType;
   i18nPrefix: string;
   cardIdleMessageKey?: string;
   filterFn: (file: AuthFileItem) => boolean;
+  sectionFilter?: QuotaSectionFilter<TState>;
   fetchQuota: (file: AuthFileItem, t: TFunction) => Promise<TData>;
   storeSelector: (state: QuotaStore) => Record<string, TState>;
   storeSetter: keyof QuotaStore;
@@ -1119,6 +1132,18 @@ export const CODEX_CONFIG: QuotaConfig<
   i18nPrefix: 'codex_quota',
   cardIdleMessageKey: 'quota_management.card_idle_hint',
   filterFn: (file) => isCodexFile(file) && !isDisabledAuthFile(file),
+  sectionFilter: {
+    labelKey: 'quota_management.codex_plan_filter_label',
+    defaultValue: 'all',
+    options: [
+      { value: 'all', labelKey: 'quota_management.codex_plan_filter_all' },
+      { value: 'free', labelKey: 'quota_management.codex_plan_filter_free' },
+      { value: 'team', labelKey: 'quota_management.codex_plan_filter_team' },
+      { value: 'plus', labelKey: 'quota_management.codex_plan_filter_plus' },
+    ],
+    resolveValue: (file, quota) =>
+      normalizePlanType(quota?.planType) ?? resolveCodexPlanType(file),
+  },
   fetchQuota: fetchCodexQuota,
   storeSelector: (state) => state.codexQuota,
   storeSetter: 'setCodexQuota',

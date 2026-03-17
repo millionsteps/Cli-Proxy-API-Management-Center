@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Select } from '@/components/ui/Select';
 import { triggerHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useQuotaStore, useThemeStore } from '@/stores';
 import type { AuthFileItem, ResolvedTheme } from '@/types';
@@ -109,15 +110,31 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
     Record<string, TState>
   >;
 
-  /* Removed useRef */
   const [columns, gridRef] = useGridColumns(380); // Min card width 380px matches SCSS
   const [viewMode, setViewMode] = useState<ViewMode>('paged');
   const [showTooManyWarning, setShowTooManyWarning] = useState(false);
+  const [sectionFilterValue, setSectionFilterValue] = useState(
+    config.sectionFilter?.defaultValue ?? 'all'
+  );
+  const { quota, loadQuota } = useQuotaLoader(config);
 
-  const filteredFiles = useMemo(() => files.filter((file) => config.filterFn(file)), [
-    files,
-    config
-  ]);
+  const sectionFiles = useMemo(() => files.filter((file) => config.filterFn(file)), [files, config]);
+
+  useEffect(() => {
+    setSectionFilterValue(config.sectionFilter?.defaultValue ?? 'all');
+  }, [config.sectionFilter]);
+
+  const filteredFiles = useMemo(() => {
+    const sectionFilter = config.sectionFilter;
+    if (!sectionFilter || sectionFilterValue === sectionFilter.defaultValue) {
+      return sectionFiles;
+    }
+
+    return sectionFiles.filter((file) => {
+      const resolvedValue = sectionFilter.resolveValue(file, quota[file.name]);
+      return resolvedValue === sectionFilterValue;
+    });
+  }, [config.sectionFilter, quota, sectionFiles, sectionFilterValue]);
   const showAllAllowed = filteredFiles.length <= MAX_SHOW_ALL_THRESHOLD;
   const effectiveViewMode: ViewMode = viewMode === 'all' && !showAllAllowed ? 'paged' : viewMode;
 
@@ -159,8 +176,6 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
     }
   }, [effectiveViewMode, columns, filteredFiles.length, setPageSize]);
 
-  const { quota, loadQuota } = useQuotaLoader(config);
-
   const pendingQuotaRefreshRef = useRef(false);
   const prevFilesLoadingRef = useRef(loading);
 
@@ -186,13 +201,13 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
 
   useEffect(() => {
     if (loading) return;
-    if (filteredFiles.length === 0) {
+    if (sectionFiles.length === 0) {
       setQuota({});
       return;
     }
     setQuota((prev) => {
       const nextState: Record<string, TState> = {};
-      filteredFiles.forEach((file) => {
+      sectionFiles.forEach((file) => {
         const cached = prev[file.name];
         if (cached) {
           nextState[file.name] = cached;
@@ -200,14 +215,28 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
       });
       return nextState;
     });
-  }, [filteredFiles, loading, setQuota]);
+  }, [loading, sectionFiles, setQuota]);
+
+  const isFilterActive = Boolean(
+    config.sectionFilter && sectionFilterValue !== config.sectionFilter.defaultValue
+  );
+
+  const countLabel =
+    isFilterActive
+      ? `${filteredFiles.length}/${sectionFiles.length}`
+      : `${sectionFiles.length}`;
+
+  const sectionFilterOptions = config.sectionFilter?.options.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey)
+  }));
 
   const titleNode = (
     <div className={styles.titleWrapper}>
       <span>{t(`${config.i18nPrefix}.title`)}</span>
-      {filteredFiles.length > 0 && (
+      {sectionFiles.length > 0 && (
         <span className={styles.countBadge}>
-          {filteredFiles.length}
+          {countLabel}
         </span>
       )}
     </div>
@@ -220,6 +249,21 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
       title={titleNode}
       extra={
         <div className={styles.headerActions}>
+          {config.sectionFilter && sectionFilterOptions ? (
+            <div className={styles.sectionFilter}>
+              <label className={styles.sectionFilterLabel}>
+                {t(config.sectionFilter.labelKey)}
+              </label>
+              <Select
+                value={sectionFilterValue}
+                options={sectionFilterOptions}
+                onChange={setSectionFilterValue}
+                className={styles.sectionFilterSelect}
+                ariaLabel={t(config.sectionFilter.labelKey)}
+                fullWidth={false}
+              />
+            </div>
+          ) : null}
           <div className={styles.viewModeToggle}>
             <Button
               variant={effectiveViewMode === 'paged' ? 'primary' : 'secondary'}
@@ -258,8 +302,16 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
     >
       {filteredFiles.length === 0 ? (
         <EmptyState
-          title={t(`${config.i18nPrefix}.empty_title`)}
-          description={t(`${config.i18nPrefix}.empty_desc`)}
+          title={
+            isFilterActive
+              ? t('quota_management.filter_empty_title')
+              : t(`${config.i18nPrefix}.empty_title`)
+          }
+          description={
+            isFilterActive
+              ? t('quota_management.filter_empty_desc')
+              : t(`${config.i18nPrefix}.empty_desc`)
+          }
         />
       ) : (
         <>

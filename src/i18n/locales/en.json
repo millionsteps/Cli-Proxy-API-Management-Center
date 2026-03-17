@@ -1309,7 +1309,14 @@
     "description": "Monitor OAuth quota status for Antigravity, Codex, and Gemini CLI credentials.",
     "refresh_files": "Refresh auth files",
     "refresh_files_and_quota": "Refresh files & quota",
-    "card_idle_hint": "Use the top \"Refresh files & quota\" button to fetch the latest quota data."
+    "card_idle_hint": "Use the top \"Refresh files & quota\" button to fetch the latest quota data.",
+    "filter_empty_title": "No matching credentials",
+    "filter_empty_desc": "No credentials match the current filter.",
+    "codex_plan_filter_label": "Plan",
+    "codex_plan_filter_all": "All",
+    "codex_plan_filter_free": "Free",
+    "codex_plan_filter_team": "Team",
+    "codex_plan_filter_plus": "Plus"
   },
   "system_info": {
     "title": "Management Center Info",

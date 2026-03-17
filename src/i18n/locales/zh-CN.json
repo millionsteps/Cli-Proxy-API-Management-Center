@@ -1309,7 +1309,14 @@
     "description": "集中查看 OAuth 额度与剩余情况",
     "refresh_files": "刷新认证文件",
     "refresh_files_and_quota": "刷新认证文件&额度",
-    "card_idle_hint": "请使用顶部“刷新认证文件&额度”按钮获取最新额度。"
+    "card_idle_hint": "请使用顶部“刷新认证文件&额度”按钮获取最新额度。",
+    "filter_empty_title": "没有匹配的凭证",
+    "filter_empty_desc": "当前筛选条件下没有匹配的凭证。",
+    "codex_plan_filter_label": "套餐",
+    "codex_plan_filter_all": "全部",
+    "codex_plan_filter_free": "Free",
+    "codex_plan_filter_team": "Team",
+    "codex_plan_filter_plus": "Plus"
   },
   "system_info": {
     "title": "管理中心信息",

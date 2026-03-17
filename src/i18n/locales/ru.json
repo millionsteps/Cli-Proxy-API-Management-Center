@@ -1314,7 +1314,14 @@
     "description": "Следите за статусом квот OAuth для учётных данных Antigravity, Codex и Gemini CLI.",
     "refresh_files": "Обновить файлы авторизации",
     "refresh_files_and_quota": "Обновить файлы и квоты",
-    "card_idle_hint": "Используйте кнопку «Обновить файлы и квоты» сверху, чтобы загрузить актуальные данные по квотам."
+    "card_idle_hint": "Используйте кнопку «Обновить файлы и квоты» сверху, чтобы загрузить актуальные данные по квотам.",
+    "filter_empty_title": "Нет подходящих учётных данных",
+    "filter_empty_desc": "По текущему фильтру совпадений не найдено.",
+    "codex_plan_filter_label": "Тариф",
+    "codex_plan_filter_all": "Все",
+    "codex_plan_filter_free": "Free",
+    "codex_plan_filter_team": "Team",
+    "codex_plan_filter_plus": "Plus"
   },
   "system_info": {
     "title": "Информация о центре управления",
