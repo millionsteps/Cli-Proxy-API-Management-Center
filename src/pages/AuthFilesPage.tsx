@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { animate } from 'motion/mini';
+import type { TFunction } from 'i18next';
 import type { AnimationPlaybackControlsWithThen } from 'motion-dom';
 import { useInterval } from '@/hooks/useInterval';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
@@ -21,6 +22,13 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
+import {
+  ANTIGRAVITY_CONFIG,
+  CLAUDE_CONFIG,
+  CODEX_CONFIG,
+  GEMINI_CLI_CONFIG,
+  KIMI_CONFIG,
+} from '@/components/quota';
 import { copyToClipboard } from '@/utils/clipboard';
 import {
   MAX_CARD_PAGE_SIZE,
@@ -63,8 +71,9 @@ import {
   writeAuthFilesUiState,
   type AuthFilesSortMode,
 } from '@/features/authFiles/uiState';
-import { useAuthStore, useNotificationStore, useThemeStore } from '@/stores';
+import { useAuthStore, useNotificationStore, useThemeStore, useQuotaStore } from '@/stores';
 import type { AuthFileItem } from '@/types';
+import { getStatusFromError, normalizePlanType, resolveAuthProvider, resolveCodexPlanType } from '@/utils/quota';
 import styles from './AuthFilesPage.module.scss';
 
 const easePower3Out = (progress: number) => 1 - (1 - progress) ** 4;
@@ -94,6 +103,53 @@ const getFilterTagIcon = (type: string, resolvedTheme: ResolvedTheme): string | 
       : iconEntry.light;
 };
 
+type AuthFilesCodexPlanFilter = 'all' | 'free' | 'team' | 'plus';
+
+type AuthFilesQuotaConfig = {
+  fetchQuota: (file: AuthFileItem, t: TFunction) => Promise<unknown>;
+  buildLoadingState: () => unknown;
+  buildSuccessState: (data: unknown) => unknown;
+  buildErrorState: (message: string, status?: number) => unknown;
+};
+
+const resolveQuotaType = (file: AuthFileItem): QuotaProviderType | null => {
+  const provider = resolveAuthProvider(file);
+  if (!QUOTA_PROVIDER_TYPES.has(provider as QuotaProviderType)) return null;
+  return provider as QuotaProviderType;
+};
+
+const getAuthFilesQuotaConfig = (type: QuotaProviderType): AuthFilesQuotaConfig => {
+  if (type === 'antigravity') return ANTIGRAVITY_CONFIG as unknown as AuthFilesQuotaConfig;
+  if (type === 'claude') return CLAUDE_CONFIG as unknown as AuthFilesQuotaConfig;
+  if (type === 'codex') return CODEX_CONFIG as unknown as AuthFilesQuotaConfig;
+  if (type === 'kimi') return KIMI_CONFIG as unknown as AuthFilesQuotaConfig;
+  return GEMINI_CLI_CONFIG as unknown as AuthFilesQuotaConfig;
+};
+
+const updateQuotaStoreByType = (
+  type: QuotaProviderType,
+  updater: (prev: Record<string, unknown>) => Record<string, unknown>
+) => {
+  const store = useQuotaStore.getState();
+  if (type === 'antigravity') {
+    store.setAntigravityQuota(updater as never);
+    return;
+  }
+  if (type === 'claude') {
+    store.setClaudeQuota(updater as never);
+    return;
+  }
+  if (type === 'codex') {
+    store.setCodexQuota(updater as never);
+    return;
+  }
+  if (type === 'kimi') {
+    store.setKimiQuota(updater as never);
+    return;
+  }
+  store.setGeminiCliQuota(updater as never);
+};
+
 export function AuthFilesPage() {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
@@ -104,6 +160,7 @@ export function AuthFilesPage() {
   const navigate = useNavigate();
 
   const [filter, setFilter] = useState<'all' | string>('all');
+  const [codexPlanFilter, setCodexPlanFilter] = useState<AuthFilesCodexPlanFilter>('all');
   const [problemOnly, setProblemOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -114,6 +171,7 @@ export function AuthFilesPage() {
   const [viewMode, setViewMode] = useState<'diagram' | 'list'>('list');
   const [sortMode, setSortMode] = useState<AuthFilesSortMode>('default');
   const [batchActionBarVisible, setBatchActionBarVisible] = useState(false);
+  const [quotaRefreshing, setQuotaRefreshing] = useState(false);
   const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
   const batchActionAnimationRef = useRef<AnimationPlaybackControlsWithThen | null>(null);
   const previousSelectionCountRef = useRef(0);
@@ -191,6 +249,7 @@ export function AuthFilesPage() {
 
   const disableControls = connectionStatus !== 'connected';
   const normalizedFilter = normalizeProviderKey(String(filter));
+  const codexPlanFilterActive = normalizedFilter === 'codex';
   const quotaFilterType: QuotaProviderType | null = QUOTA_PROVIDER_TYPES.has(
     normalizedFilter as QuotaProviderType
   )
@@ -203,6 +262,18 @@ export function AuthFilesPage() {
 
     if (typeof persisted.filter === 'string' && persisted.filter.trim()) {
       setFilter(persisted.filter);
+    }
+    if (typeof persisted.codexPlanFilter === 'string' && persisted.codexPlanFilter.trim()) {
+      const normalizedPersistedPlan =
+        normalizePlanType(persisted.codexPlanFilter) ?? persisted.codexPlanFilter;
+      if (
+        normalizedPersistedPlan === 'all' ||
+        normalizedPersistedPlan === 'free' ||
+        normalizedPersistedPlan === 'team' ||
+        normalizedPersistedPlan === 'plus'
+      ) {
+        setCodexPlanFilter(normalizedPersistedPlan as AuthFilesCodexPlanFilter);
+      }
     }
     if (typeof persisted.problemOnly === 'boolean') {
       setProblemOnly(persisted.problemOnly);
@@ -222,8 +293,8 @@ export function AuthFilesPage() {
   }, []);
 
   useEffect(() => {
-    writeAuthFilesUiState({ filter, problemOnly, search, page, pageSize, sortMode });
-  }, [filter, problemOnly, search, page, pageSize, sortMode]);
+    writeAuthFilesUiState({ filter, codexPlanFilter, problemOnly, search, page, pageSize, sortMode });
+  }, [filter, codexPlanFilter, problemOnly, search, page, pageSize, sortMode]);
 
   useEffect(() => {
     setPageSizeInput(String(pageSize));
@@ -329,18 +400,61 @@ export function AuthFilesPage() {
     return counts;
   }, [filesMatchingProblemFilter]);
 
+  const codexPlanCounts = useMemo(() => {
+    const counts: Record<AuthFilesCodexPlanFilter, number> = {
+      all: 0,
+      free: 0,
+      team: 0,
+      plus: 0,
+    };
+    filesMatchingProblemFilter.forEach((file) => {
+      if (normalizeProviderKey(String(file.provider ?? file.type ?? '')) !== 'codex') return;
+      counts.all += 1;
+      const planType = resolveCodexPlanType(file);
+      if (planType === 'free' || planType === 'team' || planType === 'plus') {
+        counts[planType] += 1;
+      }
+    });
+    return counts;
+  }, [filesMatchingProblemFilter]);
+
+  const codexPlanOptions = useMemo(
+    () => [
+      {
+        value: 'all',
+        label: `${t('auth_files.codex_plan_filter_all')} ${codexPlanCounts.all}`,
+      },
+      {
+        value: 'free',
+        label: `${t('auth_files.codex_plan_filter_free')} ${codexPlanCounts.free}`,
+      },
+      {
+        value: 'team',
+        label: `${t('auth_files.codex_plan_filter_team')} ${codexPlanCounts.team}`,
+      },
+      {
+        value: 'plus',
+        label: `${t('auth_files.codex_plan_filter_plus')} ${codexPlanCounts.plus}`,
+      },
+    ],
+    [codexPlanCounts, t]
+  );
+
   const filtered = useMemo(() => {
     return filesMatchingProblemFilter.filter((item) => {
       const matchType = filter === 'all' || item.type === filter;
+      const planType = resolveCodexPlanType(item);
+      const matchCodexPlan =
+        !codexPlanFilterActive || codexPlanFilter === 'all' || planType === codexPlanFilter;
       const term = search.trim().toLowerCase();
       const matchSearch =
         !term ||
         item.name.toLowerCase().includes(term) ||
         (item.type || '').toString().toLowerCase().includes(term) ||
         (item.provider || '').toString().toLowerCase().includes(term);
-      return matchType && matchSearch;
+      return matchType && matchCodexPlan && matchSearch;
     });
-  }, [filesMatchingProblemFilter, filter, search]);
+  }, [codexPlanFilter, codexPlanFilterActive, filesMatchingProblemFilter, filter, search]);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
@@ -373,6 +487,83 @@ export function AuthFilesPage() {
     [pageItems]
   );
   const selectedNames = useMemo(() => Array.from(selectedFiles), [selectedFiles]);
+
+  const refreshPageQuota = useCallback(async () => {
+    if (!quotaFilterType || disableControls || quotaRefreshing) return;
+
+    const targets = pageItems.filter(
+      (file) =>
+        !isRuntimeOnlyAuthFile(file) &&
+        !file.disabled &&
+        resolveQuotaType(file) === quotaFilterType
+    );
+
+    if (targets.length === 0) {
+      showNotification(t('auth_files.quota_refresh_none'), 'info');
+      return;
+    }
+
+    const config = getAuthFilesQuotaConfig(quotaFilterType);
+    setQuotaRefreshing(true);
+
+    updateQuotaStoreByType(quotaFilterType, (prev) => {
+      const next = { ...prev };
+      targets.forEach((file) => {
+        next[file.name] = config.buildLoadingState();
+      });
+      return next;
+    });
+
+    try {
+      const results = await Promise.all(
+        targets.map(async (file) => {
+          try {
+            const data = await config.fetchQuota(file, t);
+            return { name: file.name, status: 'success' as const, data };
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : t('common.unknown_error');
+            return {
+              name: file.name,
+              status: 'error' as const,
+              message,
+              errorStatus: getStatusFromError(err),
+            };
+          }
+        })
+      );
+
+      updateQuotaStoreByType(quotaFilterType, (prev) => {
+        const next = { ...prev };
+        results.forEach((result) => {
+          if (result.status === 'success') {
+            next[result.name] = config.buildSuccessState(result.data);
+          } else {
+            next[result.name] = config.buildErrorState(result.message, result.errorStatus);
+          }
+        });
+        return next;
+      });
+
+      const successCount = results.filter((result) => result.status === 'success').length;
+      const failedCount = results.length - successCount;
+      if (failedCount === 0) {
+        showNotification(
+          t('auth_files.quota_refresh_page_success', { count: successCount }),
+          'success'
+        );
+      } else {
+        showNotification(
+          t('auth_files.quota_refresh_page_partial', {
+            success: successCount,
+            failed: failedCount,
+          }),
+          failedCount === results.length ? 'error' : 'warning'
+        );
+      }
+    } finally {
+      setQuotaRefreshing(false);
+    }
+  }, [disableControls, pageItems, quotaFilterType, quotaRefreshing, showNotification, t]);
 
   const showDetails = (file: AuthFileItem) => {
     setSelectedFile(file);
@@ -657,6 +848,22 @@ export function AuthFilesPage() {
                 fullWidth={false}
               />
             </div>
+            {codexPlanFilterActive && (
+              <div className={styles.filterItem}>
+                <label>{t('auth_files.codex_plan_filter_label')}</label>
+                <Select
+                  className={styles.planFilterSelect}
+                  value={codexPlanFilter}
+                  options={codexPlanOptions}
+                  onChange={(value) => {
+                    setCodexPlanFilter(value as AuthFilesCodexPlanFilter);
+                    setPage(1);
+                  }}
+                  ariaLabel={t('auth_files.codex_plan_filter_label')}
+                  fullWidth={false}
+                />
+              </div>
+            )}
             <div className={`${styles.filterItem} ${styles.filterToggleItem}`}>
               <label>{t('auth_files.problem_filter_label')}</label>
               <div className={styles.filterToggle}>
@@ -675,6 +882,21 @@ export function AuthFilesPage() {
                 />
               </div>
             </div>
+            {quotaFilterType && (
+              <div className={`${styles.filterItem} ${styles.filterActionItem}`}>
+                <label>{t('auth_files.quota_refresh_page_label')}</label>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void refreshPageQuota()}
+                  disabled={disableControls || quotaRefreshing || pageItems.length === 0}
+                  loading={quotaRefreshing}
+                  className={styles.quotaRefreshButton}
+                >
+                  {t('auth_files.quota_refresh_page_button')}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 

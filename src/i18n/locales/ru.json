@@ -579,7 +579,17 @@
     "quota_refresh_single": "Обновить квоту",
     "quota_refresh_hint": "Обновить квоту только для этих учётных данных",
     "quota_refresh_success": "Квота для \"{{name}}\" обновлена",
-    "quota_refresh_failed": "Не удалось обновить квоту для \"{{name}}\": {{message}}"
+    "quota_refresh_failed": "Не удалось обновить квоту для \"{{name}}\": {{message}}",
+    "codex_plan_filter_label": "Тариф",
+    "codex_plan_filter_all": "Все",
+    "codex_plan_filter_free": "Free",
+    "codex_plan_filter_team": "Team",
+    "codex_plan_filter_plus": "Plus",
+    "quota_refresh_page_label": "Квота",
+    "quota_refresh_page_button": "Обновить квоту страницы",
+    "quota_refresh_page_success": "Квота обновлена для {{count}} учётных данных",
+    "quota_refresh_page_partial": "Обновление квоты завершено: успешно {{success}}, ошибок {{failed}}",
+    "quota_refresh_none": "На этой странице нет учётных данных с доступным обновлением квоты"
   },
   "antigravity_quota": {
     "title": "Квота Antigravity",

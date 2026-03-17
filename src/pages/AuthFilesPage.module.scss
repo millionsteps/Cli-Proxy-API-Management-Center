@@ -173,6 +173,10 @@
   min-width: 220px;
 }
 
+.filterActionItem {
+  justify-content: flex-end;
+}
+
 .filterToggle {
   display: flex;
   align-items: center;
@@ -632,6 +636,14 @@
 
 .sortSelect {
   min-width: 140px;
+}
+
+.planFilterSelect {
+  min-width: 148px;
+}
+
+.quotaRefreshButton:global(.btn.btn-sm) {
+  min-width: 128px;
 }
 
 .healthStatusMessage {
